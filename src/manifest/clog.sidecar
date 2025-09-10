@@ -1091,6 +1091,34 @@
       ],
       "macroName": "QuicTraceEvent"
     },
+    "ConnCubicProbe": {
+      "ModuleProperites": {},
+      "TraceString": "/ <--- 이 부분을 새로운 이름으로 변경!\n        \"[conn][%p] CUBICPROBE: SlowStartThreshold=%u K=%u WindowMax=%u WindowLastMax=%u",
+      "UniqueId": "ConnCubicProbe",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg2"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg5"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg6"
+        }
+      ],
+      "macroName": "QuicTraceEvent"
+    },
     "ConnDelayCloseApplicationError": {
       "ModuleProperites": {},
       "TraceString": "[conn][%p] Received APPLICATION_ERROR error, delaying close in expectation of a 1-RTT CONNECTION_CLOSE frame.",
@@ -2286,6 +2314,98 @@
         }
       ],
       "macroName": "QuicTraceLogConnInfo"
+    },
+    "CubicProbeAggressiveGrowth": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] [CubicProbe] Probe Growth. CWnd grew by %u bytes (Level %u)",
+      "UniqueId": "CubicProbeAggressiveGrowth",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "CubicProbeFailed": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] [CubicProbe] Probe Failed. Level=%u, NewRTT=%llu us (Base RTT=%llu us)",
+      "UniqueId": "CubicProbeFailed",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg5"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "CubicProbeStateChangedToTest": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] [CubicProbe] Probe Start. RTT_base=%llu us",
+      "UniqueId": "CubicProbeStateChangedToTest",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg3"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "CubicProbeStateResetOnLoss": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] [CubicProbe] Probe state reset due to congestion event.",
+      "UniqueId": "CubicProbeStateResetOnLoss",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
+    },
+    "CubicProbeSuccess": {
+      "ModuleProperites": {},
+      "TraceString": "[conn][%p] [CubicProbe] Probe Success. Level=%u, NewRTT=%llu us",
+      "UniqueId": "CubicProbeSuccess",
+      "splitArgs": [
+        {
+          "DefinationEncoding": "p",
+          "MacroVariableName": "arg1"
+        },
+        {
+          "DefinationEncoding": "u",
+          "MacroVariableName": "arg3"
+        },
+        {
+          "DefinationEncoding": "llu",
+          "MacroVariableName": "arg4"
+        }
+      ],
+      "macroName": "QuicTraceLogConnVerbose"
     },
     "CustomCertValidationPending": {
       "ModuleProperites": {},
@@ -13465,6 +13585,11 @@
         "EncodingString": "[conn][%p] CUBIC: SlowStartThreshold=%u K=%u WindowMax=%u WindowLastMax=%u"
       },
       {
+        "UniquenessHash": "d690b316-0d5e-1393-66b8-5939b67e8735",
+        "TraceID": "ConnCubicProbe",
+        "EncodingString": "/ <--- 이 부분을 새로운 이름으로 변경!\n        \"[conn][%p] CUBICPROBE: SlowStartThreshold=%u K=%u WindowMax=%u WindowLastMax=%u"
+      },
+      {
         "UniquenessHash": "48dcb290-c1f4-bd02-8ea1-01c733006b3e",
         "TraceID": "ConnDelayCloseApplicationError",
         "EncodingString": "[conn][%p] Received APPLICATION_ERROR error, delaying close in expectation of a 1-RTT CONNECTION_CLOSE frame."
@@ -13778,6 +13903,31 @@
         "UniquenessHash": "ab194a75-9835-d231-9336-628397e466cc",
         "TraceID": "CryptoStateDiscard",
         "EncodingString": "[conn][%p] TLS state no longer needed"
+      },
+      {
+        "UniquenessHash": "4fb9cf10-b7e3-6948-975d-60ec6d1f9eb9",
+        "TraceID": "CubicProbeAggressiveGrowth",
+        "EncodingString": "[conn][%p] [CubicProbe] Probe Growth. CWnd grew by %u bytes (Level %u)"
+      },
+      {
+        "UniquenessHash": "669659f5-2b2e-aac5-5e55-a45b06d07856",
+        "TraceID": "CubicProbeFailed",
+        "EncodingString": "[conn][%p] [CubicProbe] Probe Failed. Level=%u, NewRTT=%llu us (Base RTT=%llu us)"
+      },
+      {
+        "UniquenessHash": "75fc11ae-9f98-af8b-b573-d81999bd410a",
+        "TraceID": "CubicProbeStateChangedToTest",
+        "EncodingString": "[conn][%p] [CubicProbe] Probe Start. RTT_base=%llu us"
+      },
+      {
+        "UniquenessHash": "3b713dea-80c1-67aa-2019-37de4e3d5cae",
+        "TraceID": "CubicProbeStateResetOnLoss",
+        "EncodingString": "[conn][%p] [CubicProbe] Probe state reset due to congestion event."
+      },
+      {
+        "UniquenessHash": "0edf6382-258a-530a-36f5-b9e5f93aad77",
+        "TraceID": "CubicProbeSuccess",
+        "EncodingString": "[conn][%p] [CubicProbe] Probe Success. Level=%u, NewRTT=%llu us"
       },
       {
         "UniquenessHash": "cfc6e146-0966-e783-5344-2ea4afd4d692",

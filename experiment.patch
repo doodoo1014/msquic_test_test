@@ -1,0 +1,248 @@
+--- a/src/tools/sample/sample.c
++++ b/src/tools/sample/sample.c
+@@ -25,6 +25,14 @@
+ #define QUIC_CALL
+ #endif
+
++#ifndef UNREFERENCED_PARAMETER
++#define UNREFERENCED_PARAMETER(P) (void)(P)
++#endif
++
++//
++// Forwards
++//
+ const QUIC_API_TABLE* MsQuic;
+ HQUIC Registration;
+ HQUIC Configuration;
+@@ -35,6 +43,8 @@
+ const char* Target;
+ uint16_t UdpPort = 4567;
+ QUIC_ADDRESS_FAMILY Family = QUIC_ADDRESS_FAMILY_UNSPEC;
++const char* CCAlgo = NULL;
++uint64_t DownloadSize = 10000000000;
+
+ //
+ // Server parameters
+@@ -43,12 +53,34 @@
+ // Client context structure.
+ //
+ typedef struct QUIC_SAMPLE_CLIENT {
+-    HQUIC Connection;
+     BOOLEAN Connected;
++    HQUIC Connection;
++    uint64_t StartTime;
++    uint64_t LastLogTimeMs;
++    uint64_t BytesReceived;
++} QUIC_SAMPLE_CLIENT;
++
++//
++// Server context structure.
++//
++typedef struct QUIC_SAMPLE_SERVER_STREAM_CONTEXT {
++    uint64_t BytesToSend;
++    uint64_t BytesSent;
++} QUIC_SAMPLE_SERVER_STREAM_CONTEXT;
++
++//
++// Helper to get current time in milliseconds.
++//
++uint64_t
++GetCurrentTimeMs()
++{
++#ifdef _WIN32
++    return GetTickCount64();
++#else
++    struct timespec ts;
++    clock_gettime(CLOCK_MONOTONIC, &ts);
++    return (uint64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
++#endif
+ } QUIC_SAMPLE_CLIENT;
+
+ //
+@@ -60,6 +104,33 @@
+     _Inout_ QUIC_STREAM_EVENT* Event
+     )
+ {
++    QUIC_SAMPLE_CLIENT* Client = (QUIC_SAMPLE_CLIENT*)Context;
++    switch (Event->Type) {
++    case QUIC_STREAM_EVENT_RECEIVE:
++        for (uint32_t i = 0; i < Event->RECEIVE.BufferCount; ++i) {
++            Client->BytesReceived += Event->RECEIVE.Buffers[i].Length;
++        }
++
++        const uint32_t LOG_INTERVAL_MS = 500;
++        uint64_t CurrentTimeMs = GetCurrentTimeMs();
++
++        if (Client->LastLogTimeMs == 0) {
++            Client->LastLogTimeMs = Client->StartTime;
++        }
++
++        if (CurrentTimeMs - Client->LastLogTimeMs >= LOG_INTERVAL_MS) {
++            QUIC_STATISTICS Stats = {0};
++            uint32_t StatsSize = sizeof(Stats);
++            MsQuic->GetParam(Client->Connection, QUIC_PARAM_CONN_STATISTICS, &StatsSize, &Stats);
++
++            double ElapsedSeconds = (double)(CurrentTimeMs - Client->StartTime) / 1000.0;
++            double ThroughputMbps = (double)(Client->BytesReceived * 8) / (ElapsedSeconds * 1000 * 1000);
++
++            printf("[CLIENT] Time: %5.2fs | Throughput: %7.2f Mbps | RTT: %4u us\n",
++                   ElapsedSeconds, ThroughputMbps, Stats.Rtt);
++
++            Client->LastLogTimeMs = CurrentTimeMs;
++        }
++        break;
++    case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
++        MsQuic->ConnectionShutdown(Client->Connection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
++        break;
++    default:
++        break;
++    }
+     UNREFERENCED_PARAMETER(Stream);
+     UNREFERENCED_PARAMETER(Context);
+     UNREFERENCED_PARAMETER(Event);
+@@ -76,6 +157,20 @@
+     _Inout_ QUIC_CONNECTION_EVENT* Event
+     )
+ {
++    QUIC_SAMPLE_CLIENT* Client = (QUIC_SAMPLE_CLIENT*)Context;
++    if (Event->Type == QUIC_CONNECTION_EVENT_CONNECTED) {
++        Client->Connected = TRUE;
++        printf("[conn][%p] Connected\n", Connection);
++        Client->StartTime = GetCurrentTimeMs();
++        HQUIC Stream = NULL;
++        MsQuic->StreamOpen(Connection, QUIC_STREAM_OPEN_FLAG_NONE, SampleStreamCallback, Client, &Stream);
++        char request[32];
++        sprintf(request, "GET /%llu", (unsigned long long)DownloadSize);
++        QUIC_BUFFER buf = { (uint32_t)strlen(request), (uint8_t*)request };
++        MsQuic->StreamStart(Stream, QUIC_STREAM_START_FLAG_NONE);
++        MsQuic->StreamSend(Stream, &buf, 1, QUIC_SEND_FLAG_FIN, NULL);
++    }
+     UNREFERENCED_PARAMETER(Connection);
+     UNREFERENCED_PARAMETER(Context);
+     UNREFERENCED_PARAMETER(Event);
+@@ -84,14 +180,67 @@
+ _IRQL_requires_max_(DISPATCH_LEVEL)
+ _Function_class_(QUIC_STREAM_CALLBACK)
+ QUIC_STATUS
+-QUIC_CALL SampleServerStreamCallback(
++QUIC_CALL
++SampleServerStreamCallback(
+     _In_ HQUIC Stream,
+     _In_opt_ void* Context,
+     _Inout_ QUIC_STREAM_EVENT* Event
+     )
+ {
+-    UNREFERENCED_PARAMETER(Stream);
+-    UNREFERENCED_PARAMETER(Context);
+-    UNREFERENCED_PARAMETER(Event);
++    QUIC_SAMPLE_SERVER_STREAM_CONTEXT* StreamContext =
++        (QUIC_SAMPLE_SERVER_STREAM_CONTEXT*)Context;
++
++    switch (Event->Type) {
++    case QUIC_STREAM_EVENT_RECEIVE:
++        if (StreamContext->BytesToSend == 0 && Event->RECEIVE.BufferCount > 0) {
++            char RequestBuffer[100] = {0};
++            uint64_t RequestSize = 0;
++            uint32_t CopyLength = Event->RECEIVE.Buffers->Length < sizeof(RequestBuffer) - 1 ?
++                                  Event->RECEIVE.Buffers->Length : sizeof(RequestBuffer) - 1;
++            memcpy(RequestBuffer, Event->RECEIVE.Buffers->Buffer, CopyLength);
++
++            if (sscanf(RequestBuffer, "GET /%llu", &RequestSize) > 0) {
++                StreamContext->BytesToSend = RequestSize;
++            } else {
++                StreamContext->BytesToSend = 1;
++            }
++
++            QUIC_BUFFER* SendBuffer = malloc(sizeof(QUIC_BUFFER) + 4096);
++            if (SendBuffer == NULL) {
++                MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 1);
++                break;
++            }
++            SendBuffer->Buffer = (uint8_t*)SendBuffer + sizeof(QUIC_BUFFER);
++            SendBuffer->Length = 4096;
++            memset(SendBuffer->Buffer, 0, SendBuffer->Length);
++            MsQuic->StreamSend(Stream, SendBuffer, 1, QUIC_SEND_FLAG_NONE, SendBuffer);
++        }
++        break;
++    case QUIC_STREAM_EVENT_SEND_COMPLETE:
++        StreamContext->BytesSent += ((QUIC_BUFFER*)Event->SEND_COMPLETE.ClientContext)->Length;
++        if (StreamContext->BytesSent < StreamContext->BytesToSend) {
++            MsQuic->StreamSend(Stream, (QUIC_BUFFER*)Event->SEND_COMPLETE.ClientContext, 1, QUIC_SEND_FLAG_NONE, Event->SEND_COMPLETE.ClientContext);
++        } else {
++            free(Event->SEND_COMPLETE.ClientContext);
++            MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_GRACEFUL, 0);
++        }
++        break;
++    case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
++        free(Context);
++        break;
++    default:
++        break;
++    }
+     return QUIC_STATUS_SUCCESS;
+ }
+
+@@ -107,6 +256,22 @@
+     _Inout_ QUIC_CONNECTION_EVENT* Event
+     )
+ {
++    if (Event->Type == QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED) {
++        QUIC_SAMPLE_SERVER_STREAM_CONTEXT* StreamContext = malloc(sizeof(QUIC_SAMPLE_SERVER_STREAM_CONTEXT));
++        if (StreamContext != NULL) {
++            StreamContext->BytesSent = 0;
++            StreamContext->BytesToSend = 0;
++            MsQuic->SetCallbackHandler(
++                Event->PEER_STREAM_STARTED.Stream,
++                (void*)SampleServerStreamCallback,
++                StreamContext);
++        } else {
++             MsQuic->StreamClose(Event->PEER_STREAM_STARTED.Stream);
++        }
++    } else if (Event->Type == QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE) {
++        MsQuic->ConnectionClose(Connection);
++    }
+     UNREFERENCED_PARAMETER(Connection);
+     UNREFERENCED_PARAMETER(Context);
+     UNREFERENCED_PARAMETER(Event);
+@@ -130,6 +295,12 @@
+             Target = argv[i] + 8;
+         } else if (strncmp(argv[i], "-port:", 6) == 0) {
+             UdpPort = (uint16_t)atoi(argv[i] + 6);
++        } else if (strncmp(argv[i], "-cc:", 4) == 0) {
++            CCAlgo = argv[i] + 4;
++        } else if (strncmp(argv[i], "-download:", 10) == 0) {
++            DownloadSize = (uint64_t)atoll(argv[i] + 10);
+         }
+     }
+
+@@ -142,7 +313,7 @@
+
+     HQUIC Connection = NULL;
+
+-    QUIC_SAMPLE_CLIENT Client = { FALSE };
++    QUIC_SAMPLE_CLIENT Client = { 0 };
+
+     //
+     // Allocate a new connection object.
+@@ -156,6 +327,21 @@
+         goto Error;
+     }
+
++    Client.Connection = Connection;
++
++    if (CCAlgo) {
++        Status =
++            MsQuic->SetParam(
++                Connection,
++                QUIC_CONGESTION_CONTROL_ALGORITHM,
++                (uint32_t)strlen(CCAlgo),
++                (const uint8_t*)CCAlgo);
++        if (QUIC_FAILED(Status)) {
++             printf("SetParam(CCAlgo) failed, 0x%x\n", Status);
++             goto Error;
++        }
++    }
++
+     printf("[conn][%p] Starting...\n", Connection);
+
+     //

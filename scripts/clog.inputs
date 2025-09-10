@@ -42,6 +42,7 @@
 ../src/core/sent_packet_metadata.c
 ../src/core/datagram.c
 ../src/core/cubic.c
+../src/core/cubicprobe.c
 ../src/core/bbr.c
 ../src/core/packet_space.c
 ../src/core/registration.c
