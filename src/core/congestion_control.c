@@ -90,6 +90,9 @@ QuicCongestionControlInitialize(
     case QUIC_CONGESTION_CONTROL_ALGORITHM_CUBICPROBE:
         CubicProbeCongestionControlInitialize(Cc, Settings);
         break;
+    case QUIC_CONGESTION_CONTROL_ALGORITHM_BBRRESYNC:
+        BbrResyncCongestionControlInitialize(Cc, Settings);
+        break;    
     }
     printf("[CC INIT] Selected CC Algorithm: %s\n", Cc->Name);
 }

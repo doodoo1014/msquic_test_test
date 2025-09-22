@@ -22,6 +22,7 @@ set(SOURCES
     cubic.c
     cubicprobe.c
     bbr.c
+    bbrresync.c
     datagram.c
     frame.c
     partition.c
